@@ -1,0 +1,9 @@
+
+services:
+  metrics:
+    build:
+      context: .
+    env_file:
+      - .env
+    command: python main.py
+    restart: unless-stopped

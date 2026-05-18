@@ -1,0 +1,9 @@
+[project]
+name = "remna-to-prometheus"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "load-dotenv>=0.1.0",
+    "prometheus-client>=0.25.0",
+    "requests>=2.34.2",
+]
