@@ -7,3 +7,15 @@ services:
       - .env
     command: python main.py
     restart: unless-stopped
+    labels: 
+      - traefik.enable=true
+      - traefik.http.services.${SUBDOMAIN}.loadbalancer.server.port=${PROMETHEUS_PORT}
+      - traefik.http.routers.${SUBDOMAIN}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.${SUBDOMAIN}.entrypoints=https
+      - traefik.http.routers.${SUBDOMAIN}.tls.certresolver=letsEncrypt
+    networks:
+      traefik_external_network:
+
+networks:
+  traefik_external_network:
+    external: true
