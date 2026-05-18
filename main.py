@@ -35,7 +35,7 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "15"))
 
 USER_LABELS = ("username", "status")
 
-USER_LIFETIME_TRAFFIC_BYTES = Gauge(
+USER_LIFETIME_TRAFFIC_BYTES = Counter(
     "remnawave_user_lifetime_traffic_bytes",
     "All-time user traffic reported by Remnawave, in bytes.",
     USER_LABELS,
@@ -62,6 +62,7 @@ REMNAWAVE_SCRAPE_ERRORS_TOTAL = Counter(
 )
 
 _known_user_label_values: set[tuple[str, str]] = set()
+_last_lifetime_traffic_bytes: dict[tuple[str, str], float] = {}
 
 
 def api_base_url() -> str:
@@ -186,7 +187,7 @@ def lifetime_traffic_bytes(user: dict[str, Any]) -> float:
 
 
 def update_metrics(users: list[dict[str, Any]]) -> None:
-    global _known_user_label_values
+    global _known_user_label_values, _last_lifetime_traffic_bytes
 
     current_label_values: set[tuple[str, str]] = set()
 
@@ -197,11 +198,36 @@ def update_metrics(users: list[dict[str, Any]]) -> None:
             continue
 
         current_label_values.add(labels)
-        USER_LIFETIME_TRAFFIC_BYTES.labels(
-            *labels).set(lifetime_traffic_bytes(user))
+        traffic_bytes = lifetime_traffic_bytes(user)
+        if traffic_bytes < 0:
+            logging.warning("Skipping negative traffic for user labels %s", labels)
+            continue
+
+        previous_traffic_bytes = _last_lifetime_traffic_bytes.get(labels)
+        counter = USER_LIFETIME_TRAFFIC_BYTES.labels(*labels)
+
+        if previous_traffic_bytes is None:
+            if traffic_bytes > 0:
+                counter.inc(traffic_bytes)
+        elif traffic_bytes > previous_traffic_bytes:
+            counter.inc(traffic_bytes - previous_traffic_bytes)
+        elif traffic_bytes < previous_traffic_bytes:
+            logging.warning(
+                "Lifetime traffic decreased for user labels %s: %s -> %s; "
+                "resetting counter series",
+                labels,
+                previous_traffic_bytes,
+                traffic_bytes,
+            )
+            USER_LIFETIME_TRAFFIC_BYTES.remove(*labels)
+            if traffic_bytes > 0:
+                USER_LIFETIME_TRAFFIC_BYTES.labels(*labels).inc(traffic_bytes)
+
+        _last_lifetime_traffic_bytes[labels] = traffic_bytes
 
     for stale_labels in _known_user_label_values - current_label_values:
         USER_LIFETIME_TRAFFIC_BYTES.remove(*stale_labels)
+        _last_lifetime_traffic_bytes.pop(stale_labels, None)
 
     _known_user_label_values = current_label_values
     REMNAWAVE_USERS_TOTAL.set(len(current_label_values))
