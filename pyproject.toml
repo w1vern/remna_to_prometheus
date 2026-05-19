@@ -7,3 +7,6 @@ dependencies = [
     "prometheus-client>=0.25.0",
     "requests>=2.34.2",
 ]
+
+[project.scripts]
+remna-to-prometheus = "remna_to_prometheus.__main__:main"
